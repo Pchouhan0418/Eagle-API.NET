@@ -16,6 +16,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using Eagle.Application.Middlewares;
 
 namespace Eagle.Application.Services
 {
@@ -24,15 +25,17 @@ namespace Eagle.Application.Services
         private readonly EagleContext _eagleContext;
         private readonly IMapper _mapper;
         private readonly ILogger<EventService> _logger;
+        private readonly ITenantProvider _tenantProvider;
 
-        public EventService(EagleContext eventContext, IMapper mapper, ILogger<EventService> logger)
+        public EventService(EagleContext eventContext, IMapper mapper, ILogger<EventService> logger, ITenantProvider tenantProvider)
         {
             _eagleContext = eventContext;
             _mapper = mapper;
             _logger = logger;
-
+            _tenantProvider = tenantProvider;
         }
 
+        
         public async Task<ApiResponse<object>> CreateEvent(EventRequestDto eventRequestDto)
         {
             try
@@ -43,10 +46,50 @@ namespace Eagle.Application.Services
                     throw new CustomException("Event creation request cannot be null", (int)HttpStatusCode.BadRequest);
                 }
 
-                var newEvent = _mapper.Map<Event>(eventRequestDto); 
+                 
+                var tenantId = _tenantProvider.GetTenant();
+                if (string.IsNullOrEmpty(tenantId))
+                {
+                    _logger.LogWarning("TenantId is null or empty.");
+                    throw new CustomException("TenantId is not set", (int)HttpStatusCode.BadRequest);
+                }
+                 
+                var newEvent = _mapper.Map<Event>(eventRequestDto);
+                newEvent.TenantId = tenantId; 
 
-                _eagleContext.Events.Add(newEvent); 
+                _eagleContext.Events.Add(newEvent);
                 await _eagleContext.SaveChangesAsync();
+
+                if (eventRequestDto.AttendeesList != null && eventRequestDto.AttendeesList.Any())
+                {
+                    var attendees = eventRequestDto.AttendeesList.Select(a => new Attendee
+                    {
+                        EventId = newEvent.Id,
+                        FullName = a.Name,
+                        Email = a.Email
+                        
+                    }).ToList();
+
+                    await _eagleContext.Attendees.AddRangeAsync(attendees);
+                    await _eagleContext.SaveChangesAsync();
+
+                    foreach (var attendee in attendees)
+                    {
+                        var emailMessage = $"Mocked Email: Sending invitation to {attendee.FullName} at {attendee.Email} for event '{newEvent.Name}'";
+                        _logger.LogInformation(emailMessage);
+
+                        _eagleContext.MockedEmailLogs.Add(new MockedEmailLog
+                        {
+                            Email = attendee.Email,
+                            FullName = attendee.FullName,
+                            EventName = newEvent.Name,
+                            SentAt = DateTime.UtcNow,
+                            TenantId = tenantId 
+                        });
+                    }
+
+                    await _eagleContext.SaveChangesAsync();
+                }
 
                 return new ApiResponse<object>
                 {
@@ -83,11 +126,23 @@ namespace Eagle.Application.Services
         {
             try
             {
-                var events = await _eagleContext.Events.ToListAsync();
+                 
+                var tenantId = _tenantProvider.GetTenant();
+                if (string.IsNullOrEmpty(tenantId))
+                {
+                    _logger.LogWarning("TenantId is null or empty.");
+                    throw new CustomException("TenantId is not set", (int)HttpStatusCode.BadRequest);
+                }
+
+                
+                var events = await _eagleContext.Events
+                    .Where(e => e.TenantId == tenantId)  
+                    .Include(e => e.Attendees)
+                    .ToListAsync();
 
                 if (events == null || !events.Any())
                 {
-                    _logger.LogWarning("No events found in the database.");
+                    _logger.LogWarning("No events found for the current tenant.");
                     throw new CustomException("No events found.", (int)HttpStatusCode.NotFound);
                 }
 
@@ -114,7 +169,7 @@ namespace Eagle.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unexpected error occurred while retrieving all events.");
+                _logger.LogError(ex, "An unexpected error occurred while retrieving events.");
                 return new ApiResponse<object>
                 {
                     Code = ResponseStatusCode.InternalServerError,
@@ -125,11 +180,23 @@ namespace Eagle.Application.Services
             }
         }
 
+        
         public async Task<ApiResponse<object>> GetEventById(int id)
         {
             try
             {
-                var eventEntity = await _eagleContext.Events.FirstOrDefaultAsync(e => e.Id == id);
+                
+                var tenantId = _tenantProvider.GetTenant();
+                if (string.IsNullOrEmpty(tenantId))
+                {
+                    _logger.LogWarning("TenantId is null or empty.");
+                    throw new CustomException("TenantId is not set", (int)HttpStatusCode.BadRequest);
+                }
+
+                var eventEntity = await _eagleContext.Events
+                    .Where(e => e.TenantId == tenantId && e.Id == id) 
+                    .Include(e => e.Attendees)
+                    .FirstOrDefaultAsync();
 
                 if (eventEntity == null)
                 {
@@ -170,7 +237,5 @@ namespace Eagle.Application.Services
                 };
             }
         }
-
-
     }
 }

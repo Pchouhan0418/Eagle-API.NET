@@ -34,8 +34,19 @@ public class EventControllerTests
             StartTime = new DateTime(2025, 5, 10, 9, 0, 0),
             EndTime = new DateTime(2025, 5, 10, 17, 0, 0),
             Venue = "International Expo Center, Accra",
-            Attendees = 150,
-            Email = "organizer@techconf.com"
+            AttendeesList = new List<AttendeeRequestDto> 
+        {
+            new AttendeeRequestDto
+            {
+                Name = "John Doe",
+                Email = "johndoe@techconf.com"
+            },
+            new AttendeeRequestDto
+            {
+                Name = "Jane Smith",
+                Email = "janesmith@techconf.com"
+            }
+        }
         };
 
         var response = new ApiResponse<object>
@@ -56,6 +67,7 @@ public class EventControllerTests
         var apiResponse = objectResult.Value as ApiResponse<object>;
         apiResponse.Error.ShouldBeFalse();
     }
+
 
     [Fact]
     public async Task GetAllEvents_ReturnsOkResult_WhenSuccessful()

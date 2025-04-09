@@ -1,5 +1,6 @@
 ﻿using Eagle.Application.DTOs.RequestModels;
 using Eagle.Application.Interfaces;
+using Eagle.Application.Middlewares;
 using Eagle.Application.Services;
 using Eagle.Domain.Enums;
 using Eagle.Domain.Middlewares;
@@ -14,7 +15,7 @@ namespace EagleApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-       
+     
     public class EventController : ControllerBase
     {
         private readonly IEvent _EventService;
@@ -32,18 +33,15 @@ namespace EagleApi.Controllers
         {
             _logger.LogInformation("Creating a new event");
 
-            
             if (!ModelState.IsValid)
             {
                 _logger.LogWarning("Validation failed for event creation. ModelState is not valid.");
 
-                // Log validation errors for debugging
                 var validationErrors = ModelState
                     .Where(ms => ms.Value.Errors.Count > 0)
                     .Select(ms => new { Field = ms.Key, Errors = ms.Value.Errors.Select(e => e.ErrorMessage) })
                     .ToList();
 
-                // Return validation errors with a BadRequest status
                 return BadRequest(new ApiResponse<object>
                 {
                     Code = ResponseStatusCode.BadRequest,
@@ -89,9 +87,6 @@ namespace EagleApi.Controllers
                 });
             }
         }
-
-
-
 
         [HttpGet("GetAllEvents")]
         public async Task<IActionResult> GetAllEvents()

@@ -17,10 +17,14 @@ namespace Eagle.Infrastructure.Context
         }
 
         public DbSet<Event> Events { get; set; }
+        public DbSet<Attendee> Attendees { get; set; }
+        public DbSet<MockedEmailLog> MockedEmailLogs { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Event>().ToTable("tblEvents");
+            modelBuilder.Entity<MockedEmailLog>().ToTable("MockedEmailLog");
         }
     }
 }
